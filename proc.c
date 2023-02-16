@@ -43,7 +43,7 @@ static ssize_t logwords_proc_write(struct file *file, const char __user *buf,
 	new_size = (size_t)*ppos + size;
 	new_data = kmalloc(new_size, GFP_KERNEL);
 	if (new_data == NULL) {
-		pr_err("logwords: failed to allocated new data buffer\n");
+		pr_err("logwords: failed to allocate new data buffer\n");
 		ret = -ENOMEM;
 		goto out;
 	}
