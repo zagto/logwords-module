@@ -1,6 +1,8 @@
 #include <linux/proc_fs.h>
+#include <linux/slab.h>
 
 #include "proc.h"
+#include "printing.h"
 #include "module.h"
 
 static ssize_t logwords_proc_read(struct file *file, char __user *buf,
@@ -9,15 +11,15 @@ static ssize_t logwords_proc_read(struct file *file, char __user *buf,
 	ssize_t ret;
 
 	mutex_lock(&logwords_data.lock);
-	if (*ppos > logwords_data.size) {
+	if (*ppos > logwords_data.buffer.size) {
 		ret = -EOVERFLOW;
 		goto out;
 	}
-	if (*ppos + size > logwords_data.size) {
-		size = logwords_data.size - *ppos;
+	if (*ppos + size > logwords_data.buffer.size) {
+		size = logwords_data.buffer.size - *ppos;
 	}
 
-	if (copy_to_user(buf, logwords_data.data + *ppos, size) != 0) {
+	if (copy_to_user(buf, logwords_data.buffer.data + *ppos, size) != 0) {
 		pr_err("logwords: unable to copy output read from logwords"
 		       "file\n");
 		ret = -EFAULT;
@@ -34,42 +36,42 @@ out:
 static ssize_t logwords_proc_write(struct file *file, const char __user *buf,
 				   size_t size, loff_t *ppos)
 {
-	char *new_data;
-	size_t new_size;
+	struct logwords_buffer new_buffer;
 	ssize_t ret;
 
 	mutex_lock(&logwords_data.lock);
 
-	new_size = (size_t)*ppos + size;
-	new_data = kmalloc(new_size, GFP_KERNEL);
-	if (new_data == NULL) {
+	new_buffer.size = (size_t)*ppos + size;
+	new_buffer.data = kmalloc(new_buffer.size, GFP_KERNEL);
+	if (new_buffer.data == NULL) {
 		pr_err("logwords: failed to allocate new data buffer\n");
 		ret = -ENOMEM;
 		goto out;
 	}
 
-	if (logwords_data.data) {
-		memcpy(new_data, logwords_data.data,
-		       min(logwords_data.size, new_size));
+	if (logwords_data.buffer.data) {
+		memcpy(new_buffer.data, logwords_data.buffer.data,
+		       min(logwords_data.buffer.size, new_buffer.size));
 	}
 
-	if (copy_from_user(new_data + *ppos, buf, size) != 0) {
+	if (copy_from_user(new_buffer.data + *ppos, buf, size) != 0) {
 		pr_err("logwords: unable to copy input written to logwords"
 		       "file\n");
-		kfree(new_data);
+		kfree(new_buffer.data);
 		ret = -EFAULT;
 		goto out;
 	}
 
-	if (logwords_data.data) {
-		kfree(logwords_data.data);
+	ret = logwards_printing_new_data(&new_buffer);
+	if (ret < 0) {
+		kfree(new_buffer.data);
+		goto out;
 	}
-	logwords_data.data = new_data;
-	logwords_data.size = new_size;
 
-	/* reset current output position to 0 so it doesn't end up in the middle
-	 * of a word */
-	logwords_data.printing_position = 0;
+	if (logwords_data.buffer.data) {
+		kfree(logwords_data.buffer.data);
+	}
+	logwords_data.buffer = new_buffer;
 
 	*ppos += size;
 	ret = size;

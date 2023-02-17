@@ -1,6 +1,7 @@
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/slab.h>
+#include <linux/list.h>
 
 #include "module.h"
 #include "printing.h"
@@ -27,8 +28,8 @@ void logwords_exit(void)
 	pr_info("logwords: unloading\n");
 	logwords_printing_exit();
 	logwords_proc_exit();
-	if (logwords_data.data) {
-		kfree(logwords_data.data);
+	if (logwords_data.buffer.data) {
+		kfree(logwords_data.buffer.data);
 	}
 }
 
